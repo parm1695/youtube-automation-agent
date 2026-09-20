@@ -16,6 +16,17 @@ const { Database } = require('./database/db');
 const { checkFFmpeg, ffmpegInstallHint } = require('./utils/ffmpeg');
 const { VideoProviderRegistry } = require('./utils/video-providers');
 
+// True when Playwright's Chromium build is installed (needed by the local slideshow provider).
+async function checkPlaywrightChromium() {
+  try {
+    const { chromium } = require('playwright');
+    await fs.access(chromium.executablePath());
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 // Everything a beginner needs to know about each provider, in one place
 const AI_PROVIDER_GUIDE = {
   gemini: {
@@ -210,6 +221,13 @@ class SetupWalkthrough {
     console.log(ffmpegOk
       ? chalk.green('  ✓ FFmpeg (video assembly)')
       : chalk.yellow(`  ✗ FFmpeg — ${ffmpegInstallHint()}`));
+
+    // The local slideshow provider renders stills with Playwright's Chromium,
+    // which `npm install` does not download automatically.
+    const chromiumOk = await checkPlaywrightChromium();
+    console.log(chromiumOk
+      ? chalk.green('  ✓ Chromium (slideshow renderer)')
+      : chalk.yellow('  ✗ Chromium — slideshow videos need it. Run: npx playwright install chromium'));
 
     const directories = [
       'config', 'logs', 'data', 'data/production', 'data/assets', 'data/videos',
@@ -541,6 +559,7 @@ class SetupWalkthrough {
     const hasGemini = Boolean(creds.gemini?.apiKey || process.env.GEMINI_API_KEY);
     const hasMedia = Boolean(creds.openai?.apiKey || process.env.OPENAI_API_KEY || hasGemini);
     const hasFFmpeg = await checkFFmpeg();
+    const hasChromium = await checkPlaywrightChromium();
     const hasUpload = Boolean(creds.youtube && this.cm.tokens.youtube);
     const videoProviders = new VideoProviderRegistry(creds).list();
     const hasVideoProvider = videoProviders.some(provider => provider.available && provider.id !== 'slideshow');
@@ -549,6 +568,7 @@ class SetupWalkthrough {
       { ok: hasText, name: 'Write scripts & pick topics', fix: 'step 2 (AI provider)' },
       { ok: hasMedia, name: 'Generate images & voice narration', fix: 'step 2 — use a Gemini or OpenAI key' },
       { ok: hasFFmpeg, name: 'Assemble real .mp4 videos', fix: ffmpegInstallHint() },
+      { ok: hasChromium, name: 'Render slideshow slides (Chromium)', fix: 'run: npx playwright install chromium' },
       { ok: hasVideoProvider, name: 'Generate AI video clips', fix: 'step 3 — or keep the local slideshow provider' },
       { ok: hasUpload, name: 'Upload to YouTube', fix: 'step 4 (YouTube connection)' }
     ];
